@@ -1,0 +1,289 @@
+---
+title: "Tutorial Dplyr- parte 1"
+subtitle: "Gerson Vasconcelos Neto"
+date: "Abril de 2018"
+output: html_notebook
+---
+
+Esse tutorial é inteiramente baseado no tutorial em Dplyr da Suzan Baert
+
+(https://suzan.rbind.io/2018/01/dplyr-tutorial-1/?utm_campaign=News&utm_medium=Community&utm_source=DataCamp.com#selecting-columns).
+
+Minha intenção aqui é somente replicá-lo para propósito de aprendizado e também disponibilizá-lo em português.
+Esta primeira parte irá cobrir ordenação, nomeação e seleção de colunas.
+
+
+### Os dados
+
+```{r}
+library(tidyverse)
+# Vamos usar o banco msleep nativo do R
+
+glimpse(msleep) # Retorna um pequeno resumo dos dados sem precisar printá-los
+
+```
+
+# Selecionando colunas
+## O básico
+
+Para selecionar algumas colunas adicione apenas seus nomes (sem aspas) dentro do `select`. A ordem que você os colocar vai determinar a ordem que eles vão aparecer no output.
+
+```{r}
+msleep %>%  
+  select(name, genus, sleep_total, awake) %>%  
+  glimpse()
+
+
+```
+
+Se você quiser selecionar muitas colunas, pode facilitar se der uma olhada nos dados para ver se você consegue selecioná-los agrupados, desselecionando alguns ou até mesmo desselecionando uma coluna para adicioná-la novamente depois.
+
+
+Para adicionar um agrupamento de colunas use a sintaxe `col_inicial:col_final`.
+
+```{r}
+
+msleep %>% 
+  select(name:order, sleep_total:sleep_cycle) %>% 
+  glimpse()
+
+
+```
+
+Uma alternativa seria **desselecionar** colunas ao colocar um sinal de menos na frente do nome da coluna, ou até de agrupamento de colunas.
+
+```{r}
+msleep %>% 
+  select(-conservation, -(sleep_total:awake)) %>% 
+  glimpse()
+
+
+```
+
+Também é possivel retirar todo um agrupamento e adicionar novamente uma coluna que fazia parte dele. Só irá funcionar se for utilizado no mesmo argumento `select()`.
+
+```{r}
+msleep %>% 
+  select(-(name:awake), conservation) %>% 
+  glimpse()
+
+
+```
+
+Há outra opção que evita a digitação repetida dos nomes da coluna `one_of()`.
+Você pode definir os nomes das colunas antecipadamente e então se referir a elas dentro do argumento `select`.
+
+```{r}
+sleep_cols <- c("sleep_total", "sleep_rem", "sleep_cycle")
+
+msleep %>% 
+  select(one_of(sleep_cols))
+
+```
+
+
+## Selecionando baseado em partes do nome da coluna
+
+Se você tem muitas colunas com estrutura de nomes similares, é possível usar correspondência parcial dessas estruturas para fazer a seleção. Para tal, deve-se usar `starts_with()` para estruturas que tem o começo parecido, `ends_with()` para estruturas com o final parecido e `contains()` para estruturas parecidas contidas no nome.
+
+```{r}
+msleep %>% 
+  select(name, starts_with("sleep")) %>% 
+  glimpse()
+
+
+```
+
+ou então,
+
+```{r}
+msleep %>%
+  select(contains("eep"), ends_with("wt")) %>% 
+  glimpse()
+
+
+```
+
+## Selecionando colunas baseado em partes do nome
+
+As funções anteriores eram utilizados com estruturas de nomes exatas. Se seus dados tem estruturas que são similares mas não são exatamente iguais, você pode utilizar qualquer expressão dentro do `matches()`. O exemplo abaixo irá selecionar qualquer coluna que contenha um 'o', seguido de uma ou mais outras letras e depois 'er'.
+
+```{r}
+msleep %>% 
+  select(matches("o.+er")) %>% 
+  glimpse()
+
+
+```
+
+## Selecionando colunas por sua classe de dados
+
+A função `select_if` permite um argumento lógico para fazer a seleção. Por exemplo, você pode selecionar todas as colunas da classe factor se utilizar `select_if(is.factor)`, assim como qualquer outra classe. Se for o caso de colunas com datas, é possível utilizar o pacote `lubridate` e aplicar um `is.POSIXt` ou `is.Date`.
+
+```{r}
+msleep %>% 
+  select_if(is.numeric) %>% 
+  glimpse()
+
+
+```
+
+Também é pode ser feita a seleção a partir de uma argumento negativo, mas deve-se colocar um ~ antes e um ponto entre parenteses do argumento `is.numeric` para que funcione como uma função.
+
+```{r}
+msleep %>% 
+  select_if(~!is.numeric(.)) %>% 
+  glimpse()
+
+
+```
+
+## Selecionando colunas por expressões lógicas
+
+O `select_if` lhe deixa selecionar de fato através de função lógica e não somente da classe do dado.
+É possível selecionar todas as colunas que tem a média maior que 500 por exemplo. Para evitar erros, você **deve** selecionar também que serão somente as colunas numéricas, o que pode ser feito antes para uma sintaxe mais clara ou na mesma linha.
+Similar ao anterior, `mean > 500` não é uma função, então é preciso adicionar o ~ antes para que seja interpretado como.
+
+```{r}
+msleep %>% 
+  select_if(is.numeric) %>% 
+  select_if(~mean(., na.rm = T) > 10)
+
+
+```
+
+ou, de modo mais fácil:
+
+```{r}
+msleep %>% 
+  select_if(~is.numeric(.) & mean(., na.rm = T) > 10)
+ 
+
+```
+
+Uma das funções muito útil para o `select_if` é a `n_distinct()`, que conta a quantidade de valores distintos na coluna. 
+Se quiser, por exemplo, retornar as colunas que tem menos que 20 respostas distintas, você deve usar `~n_distinct(.) < 20` dentro do argumento select_if. Dado que `n_distinct(.) < 20` não é uma função.
+
+```{r}
+msleep %>% 
+  select_if(~n_distinct(.) < 10)
+
+
+```
+
+# Reordenando colunas
+
+A função `select()` pode ser usada para reordenar as colunas. A ordem em que você as selecionar será a ordem do resultado.
+
+```{r}
+msleep %>% 
+  select(conservation, sleep_total, name) %>% 
+  glimpse()
+ 
+
+```
+
+Se você só deseja mover algumas colunas para a frente, é possível usar `everything()` depois das colunas para economizar tempo de escrever o resto delas.
+
+```{r}
+msleep %>% 
+  select(conservation, sleep_total, everything()) %>% 
+  glimpse()
+
+
+```
+
+# Nomeação de colunas
+
+Algumas vezes é necessário fazer mudanças nos nomes das colunas.
+
+## Renomeando colunas
+
+Se você usar uma função `select()`, você pode renomear colunas dentro dela.
+
+```{r}
+msleep %>% 
+  select(animal = name, sleep_total, extinction_threat = conservation) %>% 
+  glimpse()
+
+
+```
+
+Se quiser trabalhar com todas as colunas, portanto não usar o `select`, você pode renomear usando a função `rename()`.
+
+```{r}
+msleep %>% 
+  rename(animal = name, extinction_threat = conservation) %>% 
+  glimpse()
+
+
+```
+
+## Formatando o nome de todas as colunas
+
+A função `select_all()` lhe permite fazer mudanças em todas as colunas e recebe uma função como argumento.
+Para fazer com que todos os nomes de colunas fique em caixa alta usa-se o `toupper()`, de forma parecida podemos usar o `tolower` letras minúsculas.
+
+```{r}
+msleep %>% 
+  select_all(toupper)
+
+
+```
+
+E pode-se fazer ainda mais criando algumas funções: se por exemplo temos os nomes das colunas bagunçados por causa da importação do excel, podemos substituir os espaços por underscore "_".
+
+```{r}
+msleep2 <- select(msleep, name, sleep_total, brainwt)
+colnames(msleep2) <- c("name", "sleep total", "brain weight")
+
+msleep2 %>% 
+  select_all(~str_replace(., " ","_"))
+
+
+```
+
+## Dando nome à coluna
+
+Algumas bases de dados tem as linhas preenchidas mas não são uma coluna de fato, como a mtcars (nativa do R).
+
+```{r}
+mtcars %>% 
+  head()
+
+
+```
+
+Se queremos que essa coluna seja realmente uma coluna, podemos usar a função `rownames_to_column()` e especificar um nome para a coluna.
+
+```{r}
+mtcars %>% 
+  rownames_to_column("car_model") %>%
+  head()
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
