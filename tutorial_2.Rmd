@@ -1,0 +1,433 @@
+---
+title: "Tutorial Dplyr - parte 2"
+subtitle: "Gerson Vasconcelos Neto"
+date: "Abril de 2018"
+output: html_notebook
+---
+
+Esse tutorial é inteiramente baseado no tutorial em Dplyr da Suzan Baert
+
+(https://suzan.rbind.io/2018/01/dplyr-tutorial-1/?utm_campaign=News&utm_medium=Community&utm_source=DataCamp.com#selecting-columns).
+
+Minha intenção aqui é somente replicá-lo para propósito de aprendizado e também disponibilizá-lo em português.
+
+Esta segunda parte irá abordar ferramentas para manipularmos colunas para deixar do jeito que queremos: pode ser o cálculo de uma nova coluna, mudar para valores discretos ou dividindo/fundindo colunas.
+
+
+### Os dados
+
+```{r}
+library(tidyverse)
+# Vamos usar o banco msleep nativo do R
+
+glimpse(msleep) # Retorna um pequeno resumo dos dados sem precisar printá-los
+
+```
+
+
+# Modificando colunas
+## O básico
+
+Podemos criar novas colunas com a função `mutate()`. Dentro da mutate as opções são praticamente infinitas: basicamente qualquer operação que você pode fazer com vetores normais, também é possivel fazer dentro da função `mutate()`.
+Qualquer coisa dentro da `mutate` pode ser ou uma nova coluna (ao colocar no mutate um novo nome de coluna), ou pode substituir a coluna atual (mantendo o mesmo nome da coluna atual).
+Uma das opções mais simples é o cálculo baseado nos valores de outras colunas. No código abaixo estamos mudando os dados de sono de horas para minutos.
+
+```{r}
+msleep %>% 
+  select(name, sleep_total) %>% 
+  mutate(sleep_total_min = sleep_total * 60)
+
+
+```
+
+
+Novas colunas podem ser feitas com funções agregadas como: mean, median, max, min, sd,...
+No código abaixo fazemos duas novas colunas: a primeira mostrando a diferença de cada linha do tempo de sono total vs. o tempo médio de sono e a segunda mostrando a diferença do tempo de sono total vs. o animal que tem o menor tempo de sono.
+
+```{r}
+msleep %>% 
+  select(name, sleep_total) %>% 
+  mutate(sleep_total_vs_AVG = sleep_total - round(mean(sleep_total), 1),  ## round é para arredondar
+         sleep_total_vs_MIN = sleep_total - min(sleep_total))             ## o segundo argumento é 
+                                                                          ## o nº de casas decimais
+
+
+
+```
+
+As funções agregadas nas colunas por padrão vão querer sumarizar a coluna (como a de cima), contudo se tentarmos usar o `sum()` ou `mean()` nas colunas, podemos encontrar erros ou respostas absurdas. Nesses casos podemos escrever a operação aritmética `mutate(average = (sleep_rem + sleep_cycle) / 2)` ou adicionar instruções especiais no pipe ( %>% ) que possa realizar essas funções agregadas não na coluna inteira mas por linha.
+
+```{r}
+# alternativa a escrever a aritmética
+
+msleep %>% 
+  select(name, contains("sleep")) %>% 
+  rowwise() %>% # operação linha por linha
+  mutate(avg = mean(c(sleep_rem, sleep_cycle)))
+
+```
+
+
+A função `ifelse` merece uma menção especial por causa que ela é particularmente útil se não quisermos modificar toda a coluna da mesma maneira. Com a `ifelse()`, primeiro especificamos um argumento lógico e depois o que deve acontecer se o argumento retornar `TRUE`, e por último o que acontece quando retorna `FALSE`.
+
+Imagine que temos uma base de dados com dois grande valores que nós assumimos que são erros ortográficos ou de mensuração e queremos excluí-los. O código abaixo vai pegar qualquer valor `brainwt` acima de 4 e retornar NA. Nesse caso, o código não ira mudar em nada para valores abaixo de 4.
+
+```{r}
+msleep %>% 
+  select(name, brainwt) %>% 
+  mutate(brainwt2 = ifelse(brainwt > 4, NA, brainwt)) %>% 
+  arrange(desc(brainwt)) # reordenar de forma descrescente
+
+
+```
+
+Também podemos modificar colunas de strings com a função do stringr, `str_extract()`, combinada com qualquer letra ou combinações de partes da palavra. 
+O exemplo do código abaixo ira retornar a última palavra do nome do animal e tranformar em letra minúscula.
+
+```{r}
+msleep %>% 
+  select(name) %>% 
+  mutate(name_last_word = tolower(str_extract(name, pattern = "\\w+$")))
+# o segundo argumento é definido pelos comandos do REGEX(regular expressions)
+
+```
+
+  
+## Modificando várias colunas de uma vez
+
+Aqui é onde a mágica realmente acontece. Assim como na parte 1, com a função `select()`, há variantes da função `mutate()`:
+
+* `mutate_all()` irá modificar todas as colunas baseada nas suas instruções
+
+* `mutate_if()` primeiro requer uma função que retorne um booleano para selecionar as colunas. Se for TRUE, as instruções do `mutate` vão ser executadas nas variáveis especificadas.
+
+* `mutate_at()` requer que especifiquemos as colunas dentro de um argumento `vars()` no qual a modificação será feita.
+
+### Mutate all
+
+A função `mutate_all()` é a mais fácil de entender e também é muito bacana usá-las para quando estiver limpando seus dados. Só precisa comandar uma ação, na forma de uma função, que queira executar em todas as colunas.
+
+Algo mais fácil para começar: modificando todos os dados para letras minúsculas.
+
+
+```{r}
+msleep %>% 
+  mutate_all(tolower)
+
+
+```
+
+
+A ação dentro da `mutate` precisa ser uma função: em muitos casos podemos colocar o nome da função sem  os colchetes, mas em alguns caso é preciso usar para os argumentos da função ou se quisermos combinar elementos. Nesses casos temos algumas opções: fazer as funções antes (mais útil se for uma função longa) ou chamar uma função dentro da mutate com ~ antes ou usando `funs()`.
+
+A modificação *paste* abaixo, requer a função dentro do mutate. Podemos usar `~paste(., " /n ")` ou então `funs(paste(., " /n ")`. Quando estamos fazendo essa função dentro da mutate, normalmente precisamos de uma maneira de se referir ao valor que estamos substituindo: é isto que o ` . ` simboliza.
+
+Por exemplo, depois de raspagens na internet normalmente temos tabelas com muitos espaços e sinais `\n` extras, mas podemos limpar tudo isso de uma vez só.
+
+Primeiro vamos usar o `mutate_all()` para bagunçar os dados:
+
+```{r}
+msleep_ohno <- msleep %>% 
+  mutate_all(~paste(., " /n "))
+
+msleep_ohno[,1:4]
+
+```
+
+
+Agora, vamos limpar esses dados:
+Nesse código iremos assumir que não são todos os dados que apresentam a mesma quantidade de espaços, como é o caso normalmente quando analisamos dados: primeiro removemos qualquer `/n` para depois cortar qualquer espaço em branco extra.
+
+```{r}
+msleep_corr <- msleep_ohno %>%
+  mutate_all(~str_replace_all(., "/n", "")) %>%   # substituindo todos os /n por 'nada'
+  mutate_all(str_trim)                           # removendo os espaços em branco
+
+msleep_corr[,1:4]
+
+
+```
+
+
+### Mutate if
+
+Nem todas as funções para limpeza de dados podem ser feitas com `mutate_all()`. Tentar arredondar seus dados vai dar erro se tiver colunas numéricas e de strings.
+
+```{r}
+msleep %>% 
+  mutate_all(round)
+
+
+```
+
+Neste caso, devemos adicionar a condição que a coluna deve ter para ser numérica antes de executar o `round()`, que pode ser feito com o mutate_if.
+
+Ao usar o `mutate_if()` nós precisamos de dois argumentos dentro do pipe:
+
+* Primeiro precisa da informação sobre as colunas que queremos escolher. Essa informação precisa ser uma função que retorne um valor booleano. As mais fáceis são: `is.numeric`, `is.factor`, `is.integer`, `is.double`, `is.logical`, `lubridate::is.POSIXt` ou `lubridate::is.Date`. 
+
+* Depois, precisamos dar instruções sobre as modificações na forma de uma função. Se for necessário, usar ~ ou `funs()` antes.
+
+```{r}
+msleep %>% 
+  select(name, sleep_total:bodywt) %>% 
+  mutate_if(is.numeric, round)
+
+
+
+```
+
+
+### Mutate at para modificar colunas específicas
+
+Ao usar o `mutate_at()` nós precisamos de dois argumentos no pipe:
+
+* Primeiro precisamos colocar as informações sobre as colunas que queremos escolher. Nesse caso podemos escolher qualquer seleção de colunas (usando todas as possibilidades da função `select()`) e colocá-las dentro do `vars()`.
+
+* Depois, necessitamos dar instruções sobre as modificações na forma de uma função. Se for necessário, usar ~ ou `funs()` antes.
+
+Todas as medidas das variáveis sleep estão em horas. Se queremos elas em minutos, podemos utilizar `mutate_at()` e selecionar todos as colunas que contém sleep nelas dentro da `vars()`. Depois fazemos uma função dentro que multiplica todos os valores por 60. 
+Nesse código de exemplo abaixo mostramos podemos ver que todos as colunas `sleep` foram modificadas para minutos, mas `awake` não foi.
+
+
+```{r}
+msleep %>% 
+  select(name, sleep_total:awake) %>% 
+  mutate_at(vars(contains("sleep")), ~(.*60))
+
+
+```
+
+### Mudando nome de colunas depois de modifcá-las
+
+Com um único `mutate()` temos imediatamente a opção de mudar os nomes das colunas. No exemplo acima, é bastante confuso de perceber que as colunas sleep estão em uma unidade diferente, podemos mudar isso ao usar um função para renomear colunas:
+
+```{r}
+
+msleep %>% 
+  select(name, sleep_total:awake) %>% 
+  mutate_at(vars(contains("sleep")), ~(.*60)) %>% 
+  rename_at(vars(contains("sleep")), ~paste0(.,"_min"))
+
+```
+
+Ou então, podemos usar um rótulo dentro da `funs()` que será anexado ao nome atual. A maior diferença entre as duas opções é: a versão dque usa o `funs()` usa uma linha de código a menos, mas as colunas serão adicionadas e não substituidas. Dependendo do cenário, qualquer uma das duas pode ser útil.
+
+```{r}
+msleep %>%
+  select(name, sleep_total:awake) %>%
+  mutate_at(vars(contains("sleep")), funs(min = .*60)) # desse jeito o "_min" já é anexado no final
+
+
+
+```
+
+
+## Trabalhando com colunas discretas
+
+### Recodificando colunas discretas
+
+
+Para reorganizar ou renomear colunas discretas, podemos usar `recode()` dentro de uma `mutate()`: isso nos possibilita mudar o nome atual ou agrupar os *levels* atuais para ter menos *levels*. O `.default` se refere a qualquer coisa que não for referida pelos grupos anteriores com exceção dos NAs. Podemos mudar os NAs para outra coisa que quisermos ao usar um argumento `.missing`.
+
+```{r}
+msleep %>%
+  mutate(conservation2 = recode(conservation,
+                        "en" = "Endangered",
+                        "lc" = "Least_Concern",
+                        "domesticated" = "Least_Concern",
+                        .default = "other")) %>%
+  count(conservation2)
+
+
+```
+
+
+Existe uma versão especial para retornar um **factor**: `recode_factor()`. Por default o argumento `.ordered` é `FALSE`. Para que seja retornado factors ordenados, temos que colocar esse argumento como `TRUE`:
+
+```{r}
+msleep %>%
+  mutate(conservation2 = recode_factor(conservation,
+                        "en" = "Endangered",
+                        "lc" = "Least_Concern",
+                        "domesticated" = "Least_Concern",
+                        .default = "other",
+                        .missing = "no data",
+                        .ordered = TRUE)) %>%
+  count(conservation2)
+
+
+```
+
+
+### Criando novas colunas discretas (dois *levels*)
+
+O argumento `ifelse()` pode ser utilizado para transformar uma coluna numérica em uma coluna discreta. Como mencionado acima, `ifelse()` recebe uma expressão lógica, depois o que fazer se a expressão for `TRUE` e por último o que fazer se ela for `FALSE`. 
+O código abaixo irá dividir a medida atual do `sleep_total` em uma discreta com nomes dos sonos "longos" ou "curtos".
+
+```{r}
+msleep %>%
+  select(name, sleep_total) %>%
+  mutate(sleep_time = ifelse(sleep_total > 10, "long", "short")) 
+
+
+```
+
+
+### Criando novas colunas discretas (múltiplos *levels*)
+
+O `ifelse()` pode ser aninhado se quisermos mais de dois *levels*, porém será muito mais fácil usar o `case_when()` que nos permite usar tantos *levels* quanto desejarmos e é mais fácil de ler do que muitos `ifelse()` aninhados. 
+Os argumentos são avaliados em ordem, então somente nas linhas em que o primeiro argumento não é verdadeiro continuarão sendo avaliadas nos próximos argumentos. Para tudo o que restar no final, basta usar `TRUE ~ "novoNomeDesejado"`.
+Infelizmente parace que não há um jeito fácil de fazer o `case_when()` retornar os fatores em ordem, então teremos que fazer manualmente depois, usando `forcats::fct_relevel()` ou usando somente a função `factor`. Se tivermos muitos levels, é mais aconselhavél fazer um vetor dos levels antes para evitar muita bagunça.
+
+```{r}
+msleep %>%
+  select(name, sleep_total) %>%
+  mutate(sleep_total_discr = case_when(sleep_total > 13 ~ "very long",
+                                       sleep_total > 10 ~ "long",
+                                       sleep_total > 7 ~ "limited",
+                                       TRUE ~ "short")) %>% 
+  mutate(sleep_total_discr = factor(sleep_total_discr, levels = c("short", 
+                                                                 "limited",
+                                                                 "long", 
+                                                                 "very long")))
+
+```
+
+
+A função `case_when()` não funciona somente dentro de uma coluna, também funciona para fazer agrupamento das colunas.
+
+```{r}
+
+msleep %>%
+  mutate(silly_groups = case_when(
+    brainwt < 0.001 ~ "light_headed",
+    sleep_total > 10 ~ "lazy_sleeper",
+    is.na(sleep_rem) ~ "absent_rem",
+    TRUE ~ "other")) %>%
+  count(silly_groups)
+
+
+```
+
+
+## Dividindo e fundindo colunas
+
+Pegue esses dados como exemplo:
+
+```{r}
+(conservation_expl <- read_csv("conservation_explanation.csv"))
+
+
+```
+
+Podemos separar quaisquer coluna ao usar a função `separate()`. Para fazer isso, devemos especificar a coluna que vai ser dividida, seguido dos nomes das novas colunas e qual separador a função deve procurar.
+Neste exemplo abaixo, o código mostra a divisão de duas colunas pelo separador " = ".
+
+
+```{r}
+(conservation_table <- conservation_expl %>%
+  separate(`conservation abbreviation`, 
+           into = c("abbreviation", "description"), sep = " = "))
+## note que ao colocar entre parênteses a atribuição ela já printa automaticamente
+
+```
+
+
+A função oposta a essa é a `unite()`. Especificamos o nome da nova coluna, depois as colunas que serão unidas e por fim que separador desejamos usar.
+
+```{r}
+conservation_table %>% 
+  unite(united_col, abbreviation, description, sep = ": ")
+
+
+```
+
+
+## Trazendo colunas de outras tabelas
+
+Se quisermos adicionar informações de outras tabelas, podemos usar as funções de junção do `dplyr`.
+Os dados da *msleep* contém abreviações para para a conservação de espécies, mas se não formos literados no assunto vamos precisar das descrições que usamos no item anterior dentro dos dados da *msleep*.
+As junções vão ter um capítulo próprio mas nesse caso em particular iremos usar o `left_join()`, ou seja, deixar a tabela principal à esquerda e adicionar colunas de outras tabelas pela direita. No argumento `by =` iremos especificar quais colunas correspondem para que a função saiba adicioná-las juntas.
+No exemplo abaixo vamos adicionar a descrição de diferentes estados de conservação de espécies em nossa tabela `msleep`. Os dados principais contém uma categoria `domesticated` que queremos conservá-la. Isto é feito na ultima linha do código, com o `ifelse()`.
+
+
+```{r}
+msleep %>%
+  select(name, conservation) %>%
+  mutate(conservation = toupper(conservation)) %>%   # passando para maiúsculo
+  left_join(conservation_table, by = c("conservation" = "abbreviation")) %>%  # fazendo o join
+  mutate(description = ifelse(is.na(description), conservation, description))
+
+
+```
+
+## Juntando e dividindo dados
+
+A função `gather()` irá juntar várias colunas e transformar em uma. Nesse caso, temos 3 colunas que descrevem uma medida de tempo. Para algumas análises e gráficos, pode ser necessário que juntemos todas essas em apenas uma.
+A `gather()` função pede que voce de um nome (key) para a nova coluna descritiva e outro nome (value) para a coluna dos valores. As colunas que você não quer juntar precisam ser desselecionadas no final. No código exemplo a seguir estamos desselecionando a coluna `name`.
+
+```{r}
+msleep %>%
+  select(name, contains("sleep")) %>%
+  gather(key = "sleep_measure", value = "time", -name)
+
+
+```
+
+
+Um atributo muito útil da função `gather()` é o argumento `factor_key`, que é **FALSE** por default. No exemplo passado a coluna `sleep_measure` é um vetor de caracteres porque não adicionamos esse argumento, fazendo que ele seja o default. Se desejamos sumarizar ou plotar um gráfico depois, precisamos que a coluna esteja em ordem alfabética, ordenada.
+Se quisermos manter a ordem original, precisamos adicionar esse argumento `factor_key = TRUE`, que além disso irá armazenar nossa coluna `sleep_measure` como `factor`. 
+
+```{r}
+(msleep_g <- msleep %>%
+  select(name, contains("sleep")) %>%
+  gather(key = "sleep_measure", value = "time", -name, factor_key = TRUE))
+
+
+```
+
+
+O oposto da `gather()` é dividir as colunas. A função `spread()` irá pegar uma coluna e fazer várias colunas a partir dela. Se tivessemos começado da coluna do exemplo anterior, poderiamos pegar as diferentes medidas do sono e dividir(os pares key-value) em diferentes colunas:
+
+```{r}
+msleep_g %>% 
+  spread(sleep_measure, time)
+
+
+```
+
+## Transformando os dados em NA
+
+A função `na_if()` transforma valores específicos em `NA`. Na maioria dos casos vamos usar o comando `na_if("")` (transforma uma string vazia em NA), mas na realidade podemos usar para qualquer coisa.
+
+O código vai transformar qualquer palavra que tenha "omni" em NA.
+
+```{r}
+msleep %>%
+  select(name:order) %>%
+  na_if("omni")  
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
