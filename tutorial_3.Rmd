@@ -1,0 +1,324 @@
+---
+title: "Tutorial Dplyr - parte 3"
+subtitle: "Gerson Vasconcelos Neto"
+date: "Abril de 2018"
+output: html_notebook
+---
+
+Esse tutorial é inteiramente baseado no tutorial em Dplyr da Suzan Baert
+
+(https://suzan.rbind.io/2018/01/dplyr-tutorial-1/?utm_campaign=News&utm_medium=Community&utm_source=DataCamp.com#selecting-columns).
+
+Minha intenção aqui é somente replicá-lo para propósito de aprendizado e também disponibilizá-lo em português.
+
+
+Nesta terceira parte do tutorial sobre DPLYR iremos falar sobre como filtrar nossos dados. Além das noções básicas de filtragem, abordamos algumas maneiras mais interessantes de filtrar colunas numéricas com `near()` e `between()`, ou colunas de string com regex.
+
+### Os dados
+
+Como nas partes anteriores, muitas das funções se tornam realmente mais interessantes quando temos muitas colunas, então para facilitar usaremos as bases de dados nativas. Essa base é nativa do `ggplot2`, então podemos utilizá-la se carregarmos o **tidyverse**. Podemos também simplesmente carregar uma vez `msleep <- ggplot2::msleep` para disponibilizar os dados.
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(stringr)
+msleep <- ggplot2::msleep
+
+glimpse(msleep)
+
+
+```
+
+
+
+# Filtros de Linhas Básicos
+
+Em muitos casos não queremos adicionar todas as linhas em nossa análise, somente uma seleção destas. A função para selecionarmos linhas específicas é chamada `filter()` no DPLYR. A sintaxe geral do *filter* é: `filter(dataset, condições)`. No caso de filtramos dentro de um pipe ( %>% ), só veremos os argumentos de condições porque o dataset já vai estar selecionado pelo pipe.
+
+
+## Filtrando linhas baseado em valores numéricos
+
+Podemos filtrar variáveis numéricas baseado nos seus valores. Os operadores mais usados para isso são `>`, `>=`, `<`, `<=`, `==` e `!=`.
+
+```{r}
+msleep %>% 
+  select(name, sleep_total) %>% 
+  filter(sleep_total > 18)
+
+
+```
+
+Se desejamos selecionar um intervalo de valores, podemos usar dois requisitos lógicos. Por exemplo, para selecionar animais com um sono total entre 16 e 18 horas, podemos usar:
+`filter(sleep_total >= 16, sleep_total <= 18)`, mas tem uma maneira mais rápida de fazer isso, usando a função `between()`.
+
+```{r}
+msleep %>% 
+  select(name, sleep_total) %>% 
+  filter(between(sleep_total, 16, 18))
+
+
+```
+
+
+Outra função que pode ser útil é a `near()`, que vai selecionar todos os valores próximos a um dado número que escolhermos. Temos que especificar a tolerância `tol` para indicar o quão longe os valores podem estar. Podemos usar um número específico: `filter(near(sleep_total, 17, tol = 0.5))` por exemplo irá retornar quaisquer linha que o `sleep_total` for entre 16.5 e 17.5, ou podemos usar uma fórmula. 
+No nosso exemplo o código irá retornar todas as linhas que estão entre os desvio padrão de 17.
+
+```{r}
+msleep %>% 
+  select(name, sleep_total) %>% 
+  filter(near(sleep_total, 17, tol = sd(sleep_total)))
+
+
+```
+
+
+## Filtrando baseado em uma variável de caracteres com correspondência exata
+
+Se queremos selecionar um grupo específico de animais por exemplo, podemos usar o operador de comparação `==`.
+
+```{r}
+msleep %>% 
+  select(order, name, sleep_total) %>% 
+  filter(order == "Didelphimorphia")
+
+
+```
+
+
+De forma similar podemos utilizar outros operadores:
+`filter(order != "Rodentia")` irá selecionar tudo, exceto pela linha Rodentia.
+`filter(name > "v") irá selecionar somente as linhas com os nomes que começam com letras do alfabeto depois da letra v.
+
+Se quisermos selecionar mais de um animal, podemos usar o operador `%in%`. O código a seguir irá selecionar somente as linhas com animais que pertencem a Didelphimorphia e Diprotodontia.
+
+```{r}
+msleep %>% 
+  select(order, name, sleep_total) %>% 
+  filter(order %in% c("Didelphimorphia", "Diprotodontia"))
+
+
+```
+
+
+Podemos usar o operador `%in%` para desselecionar alguns grupos também, neste caso devemos negar adicionando uma exclamação no começo do nosso `filter`. O lógico parece ser usar `!%in%`, mas não irá funcionar.
+
+```{r}
+remove <- c("Rodentia", "Carnivora", "Primates")
+msleep %>% 
+  select(order, name, sleep_total) %>% 
+  filter(!order %in% remove)
+
+
+```
+
+
+## Filtrando linhas baseado no REGEX
+
+As opções acima só irão funcionar baseado no nome completo da variável. Porém em alguns casos vamos precisar filtrar baseado em correspondência parcial do nome. Neste caso, vamos precisar de uma função que avaliar as expressões regulares(REGEX) nas strings e nos retornar um booleano. Sempre que o argumento for `TRUE` as linhas serão filtradas.
+Há duas opções principais para fazer isto: A função base do R, `grepl()` ou a `str_detect()` do pacote `stringr`.
+
+Sempre que estiver procurando por correspondências parciais é importante lembrar que R é sensível a letras maiúsculas e minúsculas. Ao usar somente `filter(str_detect(name, pattern = "mouse")) nós deixaríamos de pegar quaisquer linhas que tivessem o nome de Mouse. Neste caso não fará diferença, mas é uma questão de boas práticas.
+
+Usamos `str_detect()` abaixo já que é mais fácil de entender. Para os que estiverem interessado a alternativa seria `filter(grepl(pattern = "mouse", tolower(name)))`.
+
+```{r}
+msleep %>% 
+  select(name, sleep_total) %>% 
+  filter(str_detect(tolower(name), pattern = "mouse"))
+
+
+```
+
+
+## Filtrando baseado em múltiplas condições
+
+Todas as funções acima só retornam baseadas em uma única condição, mas o `filter` ainda nos permite usar **AND** ou **OR** para fazer filtragens:
+
+* `filter(condition1, condition2)` irá retornar linhas onde as duas condições são satisfeitas.
+* `filter(condition1, !condition2)` irá retornar as linhas onde a primeira condição é satisfeita e a segunda não.
+* `filter(condition1 | condition2)` irá retornar as linhas onde a primeira condição ou a segunda condição é satisfeita.
+* `filter(xor(condition1, condition2))` irá retornar as linhas onde somente uma das funções são satisfeitas, e não retornar quando as duas forem satisfeitas.
+
+Múltiplas condições **AND**,**OR** ou **NOT** podem ser combinadas. No nosso exemplo abaixo o código irá retornar todas as linhas *bodywt* acima de 100 e que tenha o *sleep_total* acima de 15 ou não faz parte da ordem Carnivora.
+
+```{r}
+msleep %>% 
+  select(name, order, sleep_total:bodywt) %>% 
+  filter(bodywt > 100, (sleep_total > 15 | order != "Carnivora"))
+
+
+```
+
+Exemplo com `xor`:
+
+```{r}
+msleep %>%
+  select(name, bodywt:brainwt) %>% 
+  filter(xor(bodywt > 100, brainwt > 1))
+
+
+```
+
+
+Exemplo com `!`:
+No exemplo iremos selecionar todas as linhas onde `brainwt` é maior que 1, mas `bodywt` não passa de 100.
+
+```{r}
+msleep %>% 
+  select(name, sleep_total, brainwt, bodywt) %>% 
+  filter(brainwt > 1, !bodywt > 100)
+
+
+```
+
+
+## Filtrando linhas em branco
+
+Para filtrarmos as linhas em branco, negamos a função `is.na()` dentro do filtro:
+Neste exemplo iremos remover quaisquer linhas que `conservation` é uma NA.
+
+```{r}
+msleep %>% 
+  select(name, conservation:sleep_cycle) %>% 
+  filter(!is.na(conservation))  ## todas as que não são NAs serão removidas
+
+
+```
+
+
+## Filtrando através de múltiplas colunas
+
+O pacote `dplyr` tem algumas variantes poderosas para filtrar através de múltiplas colunas de uma vez:
+
+* `filter_all()` irá filtrar todas as colunas baseado em suas instruções
+* `filter_if()` requer uma função que retorne um booleano para indicar que colunas irá filtrar. Se for `TRUE`, as instruções do filtro serão executadas naquela colunas.
+* `filter_at()` requer que especifiquemos as colunas dentro de um argumento `vars()` para qual o filtro será feito.
+
+Há uma sintaxe geral para esses casos: primeiro especificar quais colunas, depois mencionar a condição para a filtragem. Na maioria dos casos iremos precisar um operador `.` dentro da condição que se refere aos valores que estamos procurando.
+
+## Filtrando tudo
+
+Admitidamente, `msleep` não é o melhor conjunto de dados para mostrar todo potencial, mas imagine que tenhamos um conjunto de dados com algumas colunas e queremos selecionar todas as linhas que tenham uma certa palavra em qualquer coluna. Pegue o exemplo de dados financeiros que queremos selecionar todas as linhas com 'food'(comida), não importa se 'food' é mencionada na coluna de categorial principal, na coluna de subcategoria, na coluna de comentários ou na do lugar em que você gastou.
+Podemos fazer um longo filtro, com 4 diferente condições dentro de instruções **OR**. Ou filtramos somente através de todas as colunas com a string 'food'.
+
+No nosso exemplo abaixo estamos procurando pela strig 'Ca' em todas as colunas. Queremos manter as linhas em que a string 'Ca' está presente em QUALQUER uma das variáveis, então vamos colocar a condição dentro de uma `any_vars()`.
+O código abaixo basicamente pede para mantermos quaisquer colunas que qualquer variável tenha "Ca" dentro.
+
+```{r}
+msleep %>% 
+  select(name:order, sleep_total, -vore) %>% 
+  filter_all(any_vars(str_detect(., pattern = "Ca")))
+
+
+```
+
+
+O mesmo pode ser feito para valores numéricos: esse código era manter qualquer linha contenha qualquer valor abaixo de 0.1:
+
+```{r}
+msleep %>%  
+  select(name, sleep_total:bodywt) %>% 
+  filter_all(any_vars(. < 0.1))
+
+
+```
+
+O argumento `any_vars()` é equivalente ao **OR**, então é claro que também temos um equivalente ao **AND**: `all_vars()`. No exemplo abaixo o código irá manter quaisquer linhas que os valores são maior que 1.
+
+```{r}
+msleep %>% 
+  select(name, sleep_total:bodywt, -awake) %>% 
+  filter_all(all_vars(. > 1))
+
+
+```
+
+
+## Filter if
+
+A função `filter_all()` pode as vezes ser demais. O conjunto de dados `msleep` tem um um conjunto de medidas de sono e peso que estão faltando - não há nada que podemos fazer para adicionar dados ali. Mas as primeiras colunas contém somente informações de animais. A linha *vore* do Vesper Mouse está faltando, mas isso é uma informação que podemos achar e adicionar ao banco de dados, se quisermos.
+Então, imagine que queremos achar todas as linhas onde temos NA nas primeiras colunas. `filter_all(any_vars(is.na(.)))` não vai ser útil na prática porque irá retornar 27 linhas, muitas delas são dados que faltam na seção de medidas.
+
+Neste caso: `filter_if()` é mais útil. As colunas de descrição são todas formadas por caracteres, enquanto as de medida são numéricas. Então podemos usar `filter_if()` para especificar que queremos filtrar somente as variáveis que são caracteres. No exemplo abaixo só tivemos 7 linhas.
+
+```{r}
+msleep %>% 
+  select(name:order, sleep_total:sleep_rem) %>% 
+  filter_if(is.character, any_vars(is.na(.)))
+
+
+```
+
+De forma similar poderíamos usar `is.numeric`, `is.integer`, `is.double`, `is.logical` ou `is.factor`. Se temos colunas de datas, podemos carregar o pacote **lubridate** e usar `is.POSIXt` ou `is.Date`.
+
+## Filter at
+
+Uma das funções mais poderosas é `filter_at()`: ela não filtra todas as colunas ou sequer precisa que especifiquemos o tipo da coluna, podemos somente selecionar as colunas em que as mudanças vão ocorrer via o argumento `vars()`. Esse argumento nos permite fazer qualquer coisa que podemos fazer no `select()`: podemos pegar por nomes, por funções de lógica numérica, REGEX, etc.
+
+O segundo argumento é a condição para selecionarmos. De forma similar aos exemplos acima, podemos usar `all_vars()` se todas as colunas precisam retornar **TRUE**(o equivalente ao AND) ou `any_vars()` em caso de precisarmos que somente uma variável retorne **TRUE** (o equivalente ao OR).
+
+Exemplo: Se referindo às colunas pelo nome.
+
+```{r}
+msleep %>% 
+  select(name, sleep_total:sleep_rem, brainwt:bodywt) %>% 
+  filter_at(vars(sleep_total, sleep_rem), all_vars(.>5))
+
+
+```
+
+
+Exemplo: usando outra opção similar do select.
+
+```{r}
+msleep %>% 
+  select(name, sleep_total:sleep_rem, brainwt:bodywt) %>% 
+  filter_at(vars(contains("sleep")), all_vars(.>5))
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
