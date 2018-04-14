@@ -1,0 +1,329 @@
+---
+title: "Tutorial Dplyr - parte 4"
+subtitle: "Gerson Vasconcelos Neto"
+date: "Abril de 2018"
+output: html_notebook
+---
+
+Esse tutorial é inteiramente baseado no tutorial em Dplyr da Suzan Baert
+
+(https://suzan.rbind.io/2018/01/dplyr-tutorial-1/?utm_campaign=News&utm_medium=Community&utm_source=DataCamp.com#selecting-columns).
+
+Minha intenção aqui é somente replicá-lo para propósito de aprendizado e também disponibilizá-lo em português.
+
+Nesta quarta parte do tutorial do DPLYR iremos sintetizar nossos dados:
+
+I) contar casos e observações;
+
+II) criar sumários usando `summarise()` e suas variantes `summarise_all()`, `_if()` e `_at()`;
+
+III) retornar valores máximos e mínimos de colunas.
+
+Nota: Como nas partes anteriores do tutorial, vamos apresentar tudo pelo pipe. Em alguns dos casos abaixo não seria necessário e seria até mais fácil escrever o código como uma função sozinha, mas como queremos apresentar opções que podemos usar nos pipes, todos os exemplos abaixo serão utilizados dentro de um pipe.
+
+### Os dados
+
+Como nas partes anteriores, muitas das funções se tornam realmente mais interessantes quando temos muitas colunas, vamos usar o dataset nativo do R:
+
+```{r}
+library(dplyr)
+msleep <- ggplot2::msleep
+glimpse(msleep)
+
+
+```
+
+# Contando casos e adicionando contagens
+
+## Contando o número de observações
+
+A maneira mais fácil de saber quantas observações temos para uma variável específica é usando `count()`. Ao adicionar o argumento `sort = TRUE`, irá imediatamente retornar uma tabela ordenada com o número de observações decrescente:
+
+```{r}
+msleep %>% 
+  count(order, sort = TRUE)
+
+
+```
+
+Podemos adicionar múltiplas variáveis à instrução `count()`; o exemplo abaixo está contando pelas colunas *order* e *vore*:
+
+```{r}
+msleep %>% 
+  count(order, vore, sort = TRUE)
+
+
+```
+
+
+## Adicionando o número de observações em uma coluna
+
+Se estivermos interessados em contar o número total de casos para um banco de dados, podemos usar `tally()`, que se comporta de forma similar a `nrow()`.
+
+Não podemos usar `tally()` para contar uma variável, só funciona para contar o número total de observações. De fato, como é descrito na documentação do `dplyr`, `count()` é uma forma mais simples de usar `group_by()` e `tally()`.
+
+```{r}
+msleep %>% 
+  tally()
+
+
+```
+
+Mais interessante é a função `add_tally()` que adiciona automaticamente uma coluna com o número total de observações. Seria o mesmo que usar `mutate(n = n())`.
+
+```{r}
+msleep %>% 
+  select(1:3) %>% 
+  add_tally()
+
+
+```
+
+Ainda mais interessante é a `add_count()` que toma uma variável como argumento e adiciona uma coluna que contém o número de observações. Isso nos economiza a combinação de agrupar, modificar e desagrupar denovo.
+
+```{r}
+msleep %>%
+  select(name:vore) %>%
+  add_count(vore)
+
+
+```
+
+
+# Sintetizando os dados
+
+*Nota: para algumas funções o `dplyr` entende as diferenças do inglês britânico e dos EUA. A função `summarise()` é equivalente a `summarize()`.*
+
+Se quisermos somente  saber o número de observações `count()` nos vai servir bem, mas para produzir sumários da média, soma, descio padrão, mínimo e máximo dos dados, iremos precisar usar `summarise()`. Para utilizar a função precisamos adicionar o nome da nova coluna e depois do sinal de igual, a matemática do que queremos que aconteça: `column_name = function(variable)`. Podemos adicionar vários sumários atrás do outro.
+
+```{r}
+msleep %>%
+  summarise(n = n(), average = mean(sleep_total),
+            maximum = max(sleep_total))
+
+```
+
+
+Na maioria dos casos nós não precisamos fazer sumários para a tabela toda, mas queremos fazer para algum grupo de variáveis. Para fazer isto, primeiro precisamos especificar com quais variáveis iremos formar o agrupamento, usando `group_by()`. Podemos adicionar uma ou mais variáveis no argumento `group_by()`.
+
+```{r}
+msleep %>%
+  group_by(vore) %>%
+  summarise(n = n(), average = mean(sleep_total), maximum = max(sleep_total))
+
+
+```
+
+
+A função `summarise()` funciona com quase todas funções agregadas e ainda nos permite usar alguma aritmética:
+
+* `n()` - nos dá o número de observações
+
+* `n_distinct(var)` - nos retorna o número de valores iguais a `var`
+
+* `sum(var)`, `max(var)`, `min(var)`, ...
+
+* `mean(var)`, `median(var)`, `sd(var)`, `IQR(var)`, ...
+
+
+No nosso exemplo de código iremos pedir a média de `sleep_total` e dividir por 24 para resultar na quantidade de sono como uma fração de um dia.
+
+```{r}
+msleep %>%
+  group_by(vore) %>%
+  summarise(avg_sleep_day = mean(sleep_total)/24)
+
+
+```
+
+
+## Summarise all
+
+A função `summarise_all()` requer uma função como argumento, que irá aplicar nas colunas. No nosso exemplo o código primeiro seleciona todas as colunas numéricas e depois calcula a média para cada uma delas. Tivemos que adicionar o `na.rm = TRUE` para ignorar os valores NA.
+
+```{r}
+msleep %>%
+  group_by(vore) %>%
+  summarise_all(mean, na.rm=TRUE)
+
+
+```
+
+
+As instruções para fazer o sumário precisam ser uma função. Quando não há uma função nativa do R ou um pacote para realizar o que desejamos, podemos criar essa função antes ou fazer a função dentro da instrução.
+
+Neste exemplo o código irá adicionar 5 na média de cada coluna. A função dentro pode ser feita usando `funs(mean(., na.rm = TRUE) + 5)` ou por `~`: `~mean(., na.rm = TRUE) + 5`.
+
+```{r}
+msleep %>%
+  group_by(vore) %>%
+  summarise_all(~mean(., na.rm = TRUE) + 5)
+
+
+```
+
+## Summarise if
+
+A função `summarise_if()` requer dois argumentos:
+
+* Primeiro precisa da informação sobre as colunas que queremos considerar. Essa informação precisa ser uma função que retorne um booleano. Os casos mais fáceis são funções como `is.numeric`, `is.integer`, `is.double`, `is.logical`, `is.factor`, `lubridate::is.POSIXt` ou `lubridate::is.Date`.
+
+* Depois, precisamos de informações sobre como vamos fazer o sumário dos dados, que assim como acima precisamos usar uma função. Se não uma função existente, podemos criá-la usando `funs()` ou `~`.
+
+Nosso exemplo irá retornar a média de todas as colunas numéricas:
+
+```{r}
+msleep %>%
+  group_by(vore) %>%
+  summarise_if(is.numeric, mean, na.rm=TRUE)
+
+
+```
+
+Um dos pontos negativos de funções de sintetizações agregadas é que não podemos dar um novo nome para a nova coluna. Então nem sempre pode ficar claro o qué é esse novo valor (média? mediana ? mínimo?). Graças a funções similares a `rename_*()`, só precisamos de uma linha extra para renomear.
+
+```{r}
+msleep %>%
+  group_by(vore) %>%
+  summarise_if(is.numeric, mean, na.rm=TRUE) %>%
+  rename_if(is.numeric, ~paste0("avg_", .))
+
+
+```
+
+
+## Summarise at
+
+A função `summarise_at()` também requer dois argumentos:
+
+* Primeiramente precisamos de informações sobre quais colunas vamos considerar. Neste caso, vamos precisar colocar as funções dentro de um `vars()`. Dentro do `vars()` podemos usar qualquer coisa que possa ser usado no `select()`.
+
+* Depois, precisamos de informação sobre como fazer o sumário dos dados, que como acima precisa ser em forma de função. Se não uma função já existente, criando uma com `funs()` ou com `~`.
+
+Nosso exemplo abaixo irá retornar a média de todas as colunas que contém a palavra 'sleep' e também renomeá-las para "avg_*var*" para deixar mais claro.
+
+```{r}
+msleep %>%
+  group_by(vore) %>%
+  summarise_at(vars(contains("sleep")), mean, na.rm=TRUE) %>%
+  rename_at(vars(contains("sleep")), ~paste0("avg_", .))
+
+
+```
+
+
+# Arrumando as linhas
+
+É mais prático se suas tabelas de sumários estão oranizadas, o que é trabalho da função `arrange()`. A formatação padrão das variáveis numéricas é de ordenação crescente, mas podemos adicionar a função `desc()` para mudar o padrão. Para variáveis string a função irá ordenar alfabeticamente.
+
+Ordenando variáveis numéricas:
+
+`arrange(sleep_total)` irá ordenar dos que dormem pouco até os que mais dormem. Neste caso usamos o contrário:
+
+```{r}
+msleep %>%
+  group_by(vore) %>%
+  summarise(avg_sleep = mean(sleep_total)) %>%
+  arrange(desc(avg_sleep))
+
+
+```
+
+
+Se já tivermos agrupado nossos dados, podemos nos referir aquela grupo com a instrução `arrange()` ou ao adicionar `.by_group = TRUE`. Isso irá ordenar na ordem decrescente o *total sleep time* mas entre cada grupo.
+
+```{r}
+msleep %>%
+  select(order, name, sleep_total) %>%
+  group_by(order) %>%
+  arrange(desc(sleep_total), .by_group = TRUE)
+
+
+```
+
+# Mostrando apensas parte de nossos dados
+
+Em alguns casos não queremos mostrar todas as linhas disponíveis. Vamos mostra alguns atalhos que nos economizará tempo.
+
+## Os 5 maiores e menores valores
+
+Em alguns casos nós não queremos exibir todas as linhas disponíveis. Podemos filtrar, claro, mas há alguns atalhos para necessidades específicas: se queremos selecionar os 5 maiores casos podemos combinar um `arrange`com um `head(n=5)`. Como alternativa podemos usar `top_n(5)` que irá manter (sem ordenar) os 5 maiores valores.
+
+```{r}
+msleep %>%
+  group_by(order) %>%
+  summarise(average = mean(sleep_total)) %>%
+  top_n(5)
+
+
+```
+
+Também podemos achar os 5 menores valores usando `top_n(-5)`:
+
+```{r}
+msleep %>%
+  group_by(order) %>%
+  summarise(average = mean(sleep_total)) %>%
+  top_n(-5)
+
+
+```
+
+
+
+Se tivermos mais de uma coluna, podemos adicionar a variável que queremos utilizar. No exemplo iremos manter os 5 maiores valores para *average_sleep*.
+
+```{r}
+msleep %>%
+  group_by(order) %>%
+  summarise(average_sleep = mean(sleep_total), max_sleep = max(sleep_total)) %>%
+  top_n(5, average_sleep)
+
+
+```
+
+
+
+## Seleção aleatória de linhas
+
+Usando o `sample_n()` podemos obter uma amostra aleatória de linhas.
+Uma alternativa é `sample_frac()`, que nos permite selecionar aleatoriamente uma fração de linhas (usamos aqui 10%).
+
+```{r}
+msleep %>%
+  sample_frac(.1)
+
+
+
+```
+
+
+## Um pedaço do total das linhas definido pelo usuário
+
+A instrução `head()` irá nos mostrar, por padrão, as primeiras 6 linhas, que podemos modificar adicionando um argumento-n: `head(n=10)`. De forma similar `tail()` nos mostrará as 6 últimas linhas, que novamente podem ser modificadas ao adicionar um argumento-n. Se quisermos particionar pelo em algum lugar no meio da função, podemos usar `slice()`. Nosso exemplo exibirá as linhas de 50 a 55.
+
+```{r}
+
+msleep %>% 
+  slice(50:55)
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
